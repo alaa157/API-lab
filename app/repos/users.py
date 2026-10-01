@@ -44,11 +44,12 @@ async def store_refresh_token(
 
 
 async def get_refresh_token(
-    session: AsyncSession, token_hash: str
+    session: AsyncSession, token_hash: str, *, for_update: bool = False
 ) -> RefreshToken | None:
-    result = await session.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == token_hash)
-    )
+    query = select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+    if for_update:
+        query = query.with_for_update()
+    result = await session.execute(query)
     return result.scalar_one_or_none()
 
 

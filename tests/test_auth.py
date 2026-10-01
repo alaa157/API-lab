@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import jwt
@@ -20,6 +21,20 @@ async def test_register_duplicate_409(client):
     )
     assert r.status_code == 409
     assert r.headers["content-type"].startswith("application/problem+json")
+
+
+async def test_concurrent_duplicate_registration_returns_conflict(client):
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                "/api/v1/auth/register",
+                json={"email": "racing@example.com", "password": "password123"},
+            )
+            for _ in range(2)
+        )
+    )
+
+    assert sorted(response.status_code for response in responses) == [201, 409]
 
 
 async def test_register_weak_password_422(client):
@@ -131,6 +146,31 @@ async def test_refresh_rotation_and_reuse_401(client):
     assert r.status_code == 401
 
 
+async def test_concurrent_refresh_reuse_revokes_token_chain(client):
+    await register(client)
+    tokens = await login(client)
+
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                "/api/v1/auth/refresh",
+                json={"refresh_token": tokens["refresh_token"]},
+            )
+            for _ in range(2)
+        )
+    )
+
+    assert sorted(response.status_code for response in responses) == [200, 401]
+    rotated = next(
+        response.json() for response in responses if response.status_code == 200
+    )
+    reused = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": rotated["refresh_token"]},
+    )
+    assert reused.status_code == 401
+
+
 async def test_logout_revokes(client):
     await register(client)
     tokens = await login(client)
@@ -146,6 +186,26 @@ async def test_logout_revokes(client):
         "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
     assert r.status_code == 401
+
+
+async def test_logout_cannot_revoke_another_users_refresh_token(client):
+    await register(client, email="owner@example.com")
+    owner_tokens = await login(client, email="owner@example.com")
+    await register(client, email="other@example.com")
+    other_tokens = await login(client, email="other@example.com")
+
+    r = await client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": owner_tokens["refresh_token"]},
+        headers=auth_header(other_tokens["access_token"]),
+    )
+    assert r.status_code == 403
+
+    r = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": owner_tokens["refresh_token"]},
+    )
+    assert r.status_code == 200
 
 
 async def test_admin_can_assign_role(client, db_session):

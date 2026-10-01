@@ -75,7 +75,7 @@ async def logout(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> None:
-    await service.logout(session, body.refresh_token)
+    await service.logout(session, body.refresh_token, user.id)
 
 
 @router.get("/me", response_model=UserRead)

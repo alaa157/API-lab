@@ -2,6 +2,7 @@
 
 import uuid
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
@@ -22,13 +23,19 @@ async def register(
     if await repo.get_by_email(session, email) is not None:
         raise ConflictError("email already registered")
     role = requested_role if admin_override else Role.customer
-    user = await repo.create_user(
-        session,
-        email=email,
-        password_hash=security.hash_password(password),
-        role=role,
-    )
-    await session.commit()
+    try:
+        user = await repo.create_user(
+            session,
+            email=email,
+            password_hash=security.hash_password(password),
+            role=role,
+        )
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        if await repo.get_by_email(session, email) is not None:
+            raise ConflictError("email already registered") from exc
+        raise
     return user
 
 
@@ -59,7 +66,7 @@ async def issue_pair(session: AsyncSession, user: User) -> TokenPair:
 async def rotate(session: AsyncSession, refresh_token: str) -> TokenPair:
     payload = security.decode_token(refresh_token, expected_type="refresh")
     record = await repo.get_refresh_token(
-        session, security.hash_refresh_token(refresh_token)
+        session, security.hash_refresh_token(refresh_token), for_update=True
     )
     if record is None:
         raise UnauthorizedError("unknown refresh token")
@@ -90,10 +97,14 @@ async def rotate(session: AsyncSession, refresh_token: str) -> TokenPair:
     )
 
 
-async def logout(session: AsyncSession, refresh_token: str) -> None:
+async def logout(
+    session: AsyncSession, refresh_token: str, user_id: uuid.UUID
+) -> None:
     record = await repo.get_refresh_token(
         session, security.hash_refresh_token(refresh_token)
     )
+    if record is not None and record.user_id != user_id:
+        raise ForbiddenError("refresh token belongs to another user")
     if record is not None and not record.revoked:
         record.revoked = True
     await session.commit()

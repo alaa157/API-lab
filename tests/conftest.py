@@ -75,7 +75,12 @@ async def client():
 async def clean_db():
     yield
     async with SessionLocal() as session:
-        await session.execute(text("TRUNCATE refresh_tokens, users"))
+        await session.execute(
+            text(
+                "TRUNCATE refresh_tokens, idempotency_keys, bookings, "
+                "resources, users"
+            )
+        )
         await session.commit()
 
 
