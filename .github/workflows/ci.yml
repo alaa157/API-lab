@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: booking
+          POSTGRES_PASSWORD: booking
+          POSTGRES_DB: bookingdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U booking -d bookingdb"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://booking:booking@localhost:5432/bookingdb
+      SYNC_DATABASE_URL: postgresql+psycopg://booking:booking@localhost:5432/bookingdb
+      TEST_DATABASE_URL: postgresql://booking:booking@localhost:5432/bookingdb
+      JWT_SECRET_KEY: ci-test-secret-32-bytes-minimum-ok
+      ENVIRONMENT: testing
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Migrate
+        run: alembic upgrade head
+
+      - name: Test with coverage gate
+        run: make test
+
+      - name: Spec is current
+        run: |
+          python scripts/export_openapi.py
+          git diff --exit-code openapi.json

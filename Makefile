@@ -19,7 +19,7 @@ seed:
 	python scripts/seed.py
 
 test:
-	pytest -q
+	pytest -q --cov=app/services --cov=app/api --cov-report=term-missing --cov-fail-under=85
 
 docs:
 	python scripts/export_openapi.py

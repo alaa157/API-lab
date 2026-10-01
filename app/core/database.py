@@ -9,8 +9,12 @@ from app.core.config import get_settings
 
 
 def _engine():
+    # Bounded connects: a blackholed DB fails fast (healthz/sweep degrade
+    # in seconds) instead of hanging workers.
     return create_async_engine(
-        get_settings().database_url, pool_pre_ping=True
+        get_settings().database_url,
+        pool_pre_ping=True,
+        connect_args={"timeout": 5},
     )
 
 

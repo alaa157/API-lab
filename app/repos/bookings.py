@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.booking import Booking, BookingStatus
@@ -74,6 +74,22 @@ async def future_confirmed_count(
         )
     )
     return result.scalar_one()
+
+
+async def release_key(
+    session: AsyncSession, user_id: uuid.UUID, key: str
+) -> None:
+    """Free an idempotency-key slot (used when its stored response expired).
+
+    The original booking row keeps existing; a late retry is a new request
+    and needs the (user_id, idempotency_key) slot back.
+    """
+    await session.execute(
+        update(Booking)
+        .where(Booking.user_id == user_id, Booking.idempotency_key == key)
+        .values(idempotency_key=None)
+    )
+    await session.flush()
 
 
 async def create(

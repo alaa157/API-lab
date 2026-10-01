@@ -62,6 +62,8 @@ async def create_booking(
         record = await idem.lookup(session, key=idem_key, user_id=caller.id)
         if record is not None:
             return idem.check_payload(record, req_hash)
+        # Miss (or expired): free the key slot so a late retry can proceed.
+        await repo.release_key(session, caller.id, idem_key)
 
     if await repo.has_confirmed_overlap(
         session,
