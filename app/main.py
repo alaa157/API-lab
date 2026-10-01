@@ -1,13 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from app.api.health import router as health_router
+from app.api.v1.auth import router as auth_router
 from app.core.config import get_settings
-from app.core.errors import register_handlers
-
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+from app.core.errors import problem, register_handlers
+from app.core.rate import limiter
 
 
 def create_app() -> FastAPI:
@@ -32,7 +31,14 @@ def create_app() -> FastAPI:
         return response
 
     register_handlers(app)
+
+    async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
+        return problem(429, "Too Many Requests", str(exc), "rate-limited")
+
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)  # type: ignore[arg-type]
+
     app.include_router(health_router)
+    app.include_router(auth_router, prefix="/api/v1")
 
     @app.get("/", include_in_schema=False)
     async def root() -> dict[str, str]:

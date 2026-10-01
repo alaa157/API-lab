@@ -8,6 +8,7 @@ pydantic>=2.7
 pydantic-settings>=2.3
 email-validator>=2.2
 pyjwt>=2.8
+python-multipart>=0.0.18
 pwdlib[argon2]>=0.2
 slowapi>=0.1.9
 httpx>=0.27
