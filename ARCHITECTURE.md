@@ -111,7 +111,8 @@ exclusion constraint `no_overlapping_confirmed_bookings`
 confirms serialize on exactly one winner, and the loser is mapped from
 `IntegrityError` to the same `409`. `[)` range semantics mean back-to-back
 bookings don't conflict. Requires the `btree_gist` extension (created in the
-migration; see the plan's risk log for the fallback).
+migration; without it, the fallback is the service-layer check plus a unique
+partial index).
 
 ## Auth and tokens
 

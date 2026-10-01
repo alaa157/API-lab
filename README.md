@@ -1,5 +1,9 @@
 # Booking API
 
+[![CI](https://github.com/alaa157/API-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/alaa157/API-lab/actions)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+
 A production-quality REST API for booking shared resources (rooms, desks,
 equipment). FastAPI + Postgres + JWT auth with RBAC, idempotent writes, and a
 test suite that runs against a real database.
@@ -101,5 +105,8 @@ flowchart TD
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture (domain ERD,
-booking state machine, refresh-rotation sequence) and design rationale, and
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the build contract.
+booking state machine, refresh-rotation sequence) and design rationale.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
