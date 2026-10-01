@@ -84,5 +84,22 @@ make docs      # regenerate openapi.json (commit the result)
 Errors follow RFC 7807 `application/problem+json`:
 `{type, title, status, detail, errors[]}`.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for layering and design rationale, and
+## Architecture
+
+Thin routers → services (rules, one transaction) → repositories (SQL only)
+→ Postgres. One write end to end:
+
+```mermaid
+flowchart TD
+    A["POST /bookings + Idempotency-Key?"] --> B{"stored response?"}
+    B -->|same payload| R1["201 replay"]
+    B -->|different payload| E["422"]
+    B -->|miss| V["validate + overlap check"]
+    V -->|conflict| C["409"]
+    V -->|ok| W["insert + store response"]
+    W --> R2["201"]
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture (domain ERD,
+booking state machine, refresh-rotation sequence) and design rationale, and
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the build contract.

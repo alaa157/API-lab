@@ -1,0 +1,54 @@
+erDiagram
+    users ||--o{ refresh_tokens : holds
+    users ||--o{ bookings : owns
+    users ||--o{ idempotency_keys : scopes
+    resources ||--o{ bookings : hosts
+
+    users {
+        uuid id PK
+        string email UK
+        string password_hash
+        string role
+        boolean is_active
+        timestamptz created_at
+    }
+
+    refresh_tokens {
+        uuid id PK
+        uuid user_id FK
+        string token_hash UK
+        timestamptz expires_at
+        boolean revoked
+        timestamptz created_at
+    }
+
+    resources {
+        uuid id PK
+        string name
+        string type
+        integer capacity
+        boolean is_active
+        timestamptz created_at
+    }
+
+    bookings {
+        uuid id PK
+        uuid user_id FK
+        uuid resource_id FK
+        timestamptz start_at
+        timestamptz end_at
+        string status
+        string idempotency_key "UK per user"
+        timestamptz created_at
+    }
+
+    idempotency_keys {
+        string key "PK + user_id"
+        uuid user_id "PK + key"
+        string method
+        string path
+        string request_hash
+        integer status_code
+        jsonb response_body
+        timestamptz created_at
+    }

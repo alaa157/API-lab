@@ -1,0 +1,26 @@
+flowchart TD
+    subgraph Router["Router (status codes, headers)"]
+        A["POST /bookings<br/>+ Idempotency-Key?"]
+        H1["201 + body"]
+        H2["201 replay<br/>Idempotent-Replayed: true"]
+        H3["422 / 409 problem+json"]
+    end
+    subgraph Service["Service (rules, one txn)"]
+        B{"stored response<br/>for key + user?"}
+        C["validate target user<br/>+ resource active"]
+        D{"confirmed overlap?"}
+        E["insert pending booking<br/>+ store response"]
+    end
+    subgraph RepoDB["Repo + Postgres"]
+        F[("bookings<br/>idempotency_keys")]
+    end
+
+    A --> B
+    B -->|same payload| H2
+    B -->|different payload| H3
+    B -->|miss or expired| C
+    C --> D
+    D -->|yes| H3
+    D -->|no| E
+    E <--> F
+    E --> H1

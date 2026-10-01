@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant C as Client
+    participant API as API
+    participant DB as Postgres
+
+    C ->> API: POST /auth/refresh {refresh_token}
+    API ->> API: verify signature + expiry + type=refresh
+    alt invalid or expired
+        API -->> C: 401 problem+json
+    else valid JWT
+        API ->> DB: lookup token hash
+        alt unknown hash
+            API -->> C: 401 unknown refresh token
+        else revoked (reuse detected)
+            API ->> DB: revoke whole chain (one txn)
+            API -->> C: 401 reuse detected
+        else active
+            API ->> DB: revoke old + store new hash (one txn)
+            API -->> C: 200 new access + refresh pair
+        end
+    end
