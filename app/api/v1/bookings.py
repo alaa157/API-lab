@@ -96,3 +96,13 @@ async def cancel_booking(
 ) -> Booking:
     booking = await service.get_visible(session, booking_id, caller)
     return await service.cancel(session, booking, caller)
+
+
+@router.post("/{booking_id}/complete", response_model=BookingRead)
+async def complete_booking(
+    booking_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    caller: User = Depends(require_role(Role.staff, Role.admin)),
+) -> Booking:
+    booking = await service.get_visible(session, booking_id, caller)
+    return await service.complete(session, booking)

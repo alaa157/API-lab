@@ -1,0 +1,15 @@
+direction: right
+
+client: {
+  shape: person
+  label: "client"
+}
+api: "api\nuvicorn :8000"
+db: "db\npostgres (no published port)"
+redis: "redis\nshared rate-limit counters"
+prometheus: "prometheus\nscrapes /metrics"
+
+client -> api: HTTPS
+api -> db: asyncpg
+api -> redis: REDIS_URL
+prometheus -> api

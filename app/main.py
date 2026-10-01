@@ -1,6 +1,11 @@
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
+import structlog
 
 from app.api.health import router as health_router
 from app.api.v1.auth import router as auth_router
@@ -9,6 +14,7 @@ from app.api.v1.resources import router as resources_router
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.core.errors import problem, register_handlers
+from app.core.logging import RequestIdMiddleware, configure_logging
 from app.core.rate import limiter
 
 
@@ -23,13 +29,21 @@ async def _sweep_idempotency_keys() -> None:
         pass
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    settings = get_settings()
+    backend = "redis" if settings.redis_url else "memory"
+    structlog.get_logger("app.startup").info(
+        "rate limit storage", backend=backend
+    )
+    await _sweep_idempotency_keys()
+    yield
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title=settings.app_name)
-
-    @app.on_event("startup")
-    async def _startup() -> None:
-        await _sweep_idempotency_keys()
+    configure_logging(settings)
+    app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
     app.state.limiter = limiter
 
@@ -40,6 +54,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(RequestIdMiddleware)
 
     @app.middleware("http")
     async def security_headers(request, call_next):
@@ -63,6 +78,10 @@ def create_app() -> FastAPI:
     @app.get("/", include_in_schema=False)
     async def root() -> dict[str, str]:
         return {"service": settings.app_name, "docs": "/docs"}
+
+    Instrumentator().instrument(app).expose(
+        app, endpoint="/metrics", include_in_schema=False
+    )
 
     return app
 

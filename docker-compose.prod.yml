@@ -1,0 +1,30 @@
+# Production overlay. Extends docker-compose.yml without touching app code:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Differences from dev: no bind mount, no --reload, restart policy,
+# ENVIRONMENT=production (migrations fail fast, see scripts/entrypoint.sh),
+# Redis-backed rate limits, and no published Postgres port.
+services:
+  db:
+    ports: !reset []
+
+  api:
+    restart: unless-stopped
+    volumes: !reset []
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      ENVIRONMENT: production
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}@redis:6379/0"
+
+  redis:
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}",
+      ]
+    volumes:
+      - redis-data:/data

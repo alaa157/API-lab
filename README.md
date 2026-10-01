@@ -49,6 +49,7 @@ In Codespaces, port 8000 is forwarded automatically (see `.devcontainer/`).
 | `POST /api/v1/bookings` | authed | `Idempotency-Key` optional; `409` on overlap |
 | `GET /api/v1/bookings` | authed | own-only for customers; filters + pagination |
 | `POST /api/v1/bookings/{id}/confirm` | `staff`/`admin` | `pending -> confirmed` |
+| `POST /api/v1/bookings/{id}/complete` | `staff`/`admin` | `confirmed -> completed`, idempotent |
 | `POST /api/v1/bookings/{id}/cancel` | owner/`staff`/`admin` | idempotent cancel |
 | `GET /healthz` | public | `{status, db}` |
 | `GET /docs`, `GET /openapi.json` | public | Swagger UI + committed spec |
@@ -73,6 +74,10 @@ curl -s -X POST localhost:8000/api/v1/bookings \
   -H 'Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000' \
   -d '{"resource_id":"<id>","start_at":"2030-05-01T10:00:00Z","end_at":"2030-05-01T11:00:00Z"}'
 ```
+
+## Operations
+
+Production deploys use the `docker-compose.prod.yml` overlay (no reload, `ENVIRONMENT=production`, Redis-backed rate limits). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the release flow, secrets, backups, and rollback.
 
 ## Develop
 

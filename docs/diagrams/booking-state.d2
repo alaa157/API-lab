@@ -22,8 +22,9 @@ start -> pending: POST /bookings
 pending -> confirmed: staff/admin confirm
 pending -> cancelled: owner/staff/admin cancel
 confirmed -> cancelled: owner/staff/admin cancel
-confirmed -> completed: elapsed (no endpoint in v1)
+confirmed -> completed: staff/admin complete
 confirmed -> confirmed: confirm (idempotent)
+completed -> completed: complete (idempotent)
 cancelled -> cancelled: cancel (idempotent)
 cancelled -> end_cancelled
 completed -> end_completed

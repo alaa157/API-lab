@@ -36,12 +36,48 @@ One write end to end (idempotent booking creation):
 
 ## Booking lifecycle
 
-State machine enforced by the booking service (`confirm` / `cancel`).
-`confirm` and `cancel` are idempotent; confirming a terminal state is a
-`409`, and cancelling a `completed` booking is a `409`. There is no
-complete endpoint in v1; `completed` is set out of band.
+State machine enforced by the booking service (`confirm` / `complete` /
+`cancel`), all idempotent. `confirm` moves `pending -> confirmed` (staff or
+admin only); `complete` moves `confirmed -> completed` (staff or admin
+only); `cancel` moves anything but `completed -> cancelled` (owner, staff,
+or admin). Any other transition out of a terminal state is a `409`.
 
 ![Booking state machine](docs/diagrams/booking-state.svg)
+
+## Observability
+
+One structured log record per request on the `app.access` logger
+(`request_id`, `method`, `path`, `status_code`, `duration_ms`) via
+`structlog` — JSON in every environment except development (console there).
+A Starlette middleware propagates or issues `X-Request-ID`, echoes it on the
+response, and binds it into the log context so records correlate.
+Prometheus RED metrics come from `prometheus-fastapi-instrumentator` on a
+public `GET /metrics` (excluded from the OpenAPI schema); there is no
+tracing collector (deferred non-goal).
+
+## Rate limiting and Redis
+
+`slowapi` keeps its decorator API (`app.state.limiter`,
+`require_role`-adjacent `auth_limit()`); the storage backend is chosen in
+`build_limiter(settings)`: `memory://` when `REDIS_URL` is unset (dev/test,
+logged once at startup), Redis otherwise. In production compose, Redis runs
+with AOF persistence and `--requirepass`, and the API shares one counter
+namespace across workers. A dead Redis fails rate-limit checks loudly
+rather than silently disabling them; absence of `REDIS_URL` at boot is what
+selects the memory fallback — Redis absence must never block boot.
+
+## Production posture
+
+`create_app()` configures logging first, then wires the request-ID
+middleware and metrics; the deprecated `@app.on_event("startup")` hook is
+replaced by `lifespan=`, which runs the idempotency-key sweep. The
+container entrypoint runs `alembic upgrade head` bounded by a timeout: in
+development it warns and boots anyway (`/healthz` reports `degraded`), in
+production (`ENVIRONMENT=production`) a failed migrate exits `1` before
+serving. The full release / backup / rollback story lives in
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md):
+
+![Production deploy topology](docs/diagrams/deploy.svg)
 
 ## Why problem+json
 
@@ -90,7 +126,9 @@ partial index).
   owner checks in the booking service. Registration forces `customer`
   unless the caller presents a valid admin access token.
 - Rate limits: 100/min global, 10/min on auth endpoints (in-memory via
-  `slowapi`; raised under `ENVIRONMENT=testing` so the suite can't flake).
+  `slowapi` when `REDIS_URL` is unset; Redis-backed in production — see
+  "Rate limiting and Redis" above; raised under `ENVIRONMENT=testing` so
+  the suite can't flake).
 
 ![Refresh rotation flow](docs/diagrams/auth-refresh.svg)
 

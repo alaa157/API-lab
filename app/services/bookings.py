@@ -49,6 +49,11 @@ async def create_booking(
     path: str,
 ) -> Booking | Replay:
     target = await _resolve_target(session, caller, data.user_id)
+    # Resolve ORM attributes up front: rollback() below expires all session
+    # state, and touching an expired attribute afterwards performs synchronous
+    # lazy-load IO (MissingGreenlet under asyncio).
+    caller_id = caller.id
+    target_id = target.id
 
     resource = await resource_repo.get(session, data.resource_id)
     if resource is None:
@@ -59,11 +64,11 @@ async def create_booking(
     req_hash = idem.hash_request(data.model_dump(mode="json"))
 
     if idem_key is not None:
-        record = await idem.lookup(session, key=idem_key, user_id=caller.id)
+        record = await idem.lookup(session, key=idem_key, user_id=caller_id)
         if record is not None:
             return idem.check_payload(record, req_hash)
         # Miss (or expired): free the key slot so a late retry can proceed.
-        await repo.release_key(session, caller.id, idem_key)
+        await repo.release_key(session, caller_id, idem_key)
 
     if await repo.has_confirmed_overlap(
         session,
@@ -76,7 +81,7 @@ async def create_booking(
     try:
         booking = await repo.create(
             session,
-            user_id=target.id,
+            user_id=target_id,
             resource_id=data.resource_id,
             start_at=data.start_at,
             end_at=data.end_at,
@@ -87,7 +92,7 @@ async def create_booking(
             await idem.store(
                 session,
                 key=idem_key,
-                user_id=caller.id,
+                user_id=caller_id,
                 method=method,
                 path=path,
                 request_hash=req_hash,
@@ -99,7 +104,7 @@ async def create_booking(
         # Lost a race (duplicate key or overlapping confirm committed first).
         await session.rollback()
         if idem_key is not None:
-            record = await idem.lookup(session, key=idem_key, user_id=caller.id)
+            record = await idem.lookup(session, key=idem_key, user_id=caller_id)
             if record is not None:
                 return idem.check_payload(record, req_hash)
         raise ConflictError("booking conflicts with an existing booking")
@@ -177,6 +182,20 @@ async def cancel(session: AsyncSession, booking: Booking, caller: User) -> Booki
     if booking.status == BookingStatus.cancelled:
         return booking  # idempotent
     booking.status = BookingStatus.cancelled
+    await session.commit()
+    await session.refresh(booking)
+    return booking
+
+
+async def complete(session: AsyncSession, booking: Booking) -> Booking:
+    if booking.status == BookingStatus.cancelled:
+        raise ConflictError("cancelled bookings cannot be completed")
+    if booking.status == BookingStatus.completed:
+        return booking  # idempotent
+    if booking.status != BookingStatus.confirmed:
+        raise ConflictError("only confirmed bookings can be completed")
+    # No overlap check: the booking already holds its window.
+    booking.status = BookingStatus.completed
     await session.commit()
     await session.refresh(booking)
     return booking

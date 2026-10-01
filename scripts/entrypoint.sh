@@ -1,14 +1,20 @@
 #!/bin/sh
-# Boot: best-effort migrations, then exec the API.
-# Migrations are bounded by a timeout and never block boot: if the DB is
-# unreachable the API still starts and reports it honestly via /healthz.
+# Boot: migrations, then exec the API.
+# Dev/test: best-effort (warn and continue). Production: fail fast — a prod
+# API must never serve against a stale schema.
 set -e
+MIGRATE_STATUS=0
 if [ -f alembic.ini ]; then
   echo "running migrations..."
   if timeout 30 alembic upgrade head; then
     echo "migrations done"
   else
-    echo "WARNING: migrations failed or timed out; starting anyway (see /healthz)"
+    MIGRATE_STATUS=$?
+    echo "WARNING: migrations failed or timed out (status $MIGRATE_STATUS)"
   fi
+fi
+if [ "$ENVIRONMENT" = "production" ] && [ "$MIGRATE_STATUS" -ne 0 ]; then
+  echo "ERROR: refusing to boot production with an unmigrated schema" >&2
+  exit 1
 fi
 exec "$@"

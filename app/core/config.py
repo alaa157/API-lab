@@ -27,6 +27,11 @@ class Settings(BaseSettings):
         "http://localhost:8000",
     ]
 
+    redis_url: str | None = None
+    redis_password: str | None = None
+    log_level: str = "INFO"
+    log_format: str = "auto"
+
 
 @lru_cache
 def get_settings() -> Settings:
