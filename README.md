@@ -93,16 +93,7 @@ Errors follow RFC 7807 `application/problem+json`:
 Thin routers → services (rules, one transaction) → repositories (SQL only)
 → Postgres. One write end to end:
 
-```mermaid
-flowchart TD
-    A["POST /bookings + Idempotency-Key?"] --> B{"stored response?"}
-    B -->|same payload| R1["201 replay"]
-    B -->|different payload| E["422"]
-    B -->|miss| V["validate + overlap check"]
-    V -->|conflict| C["409"]
-    V -->|ok| W["insert + store response"]
-    W --> R2["201"]
-```
+![Booking-creation flow](docs/diagrams/booking-flow.svg)
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture (domain ERD,
 booking state machine, refresh-rotation sequence) and design rationale.

@@ -1,7 +1,8 @@
 # Architecture
 
 Sources for every diagram below live in [`docs/diagrams/`](docs/diagrams/)
-as `.mmd` files; GitHub renders them in place here.
+as `.d2` sources with rendered `.svg` files (D2 v0.7.1; regenerate with
+`d2 docs/diagrams/<name>.d2 docs/diagrams/<name>.svg`).
 
 ## Layering
 
@@ -31,34 +32,7 @@ client -> FastAPI routers -> services -> repos -> Postgres (asyncpg)
 
 One write end to end (idempotent booking creation):
 
-```mermaid
-flowchart TD
-    subgraph Router["Router (status codes, headers)"]
-        A["POST /bookings<br/>+ Idempotency-Key?"]
-        H1["201 + body"]
-        H2["201 replay<br/>Idempotent-Replayed: true"]
-        H3["422 / 409 problem+json"]
-    end
-    subgraph Service["Service (rules, one txn)"]
-        B{"stored response<br/>for key + user?"}
-        C["validate target user<br/>+ resource active"]
-        D{"confirmed overlap?"}
-        E["insert pending booking<br/>+ store response"]
-    end
-    subgraph RepoDB["Repo + Postgres"]
-        F[("bookings<br/>idempotency_keys")]
-    end
-
-    A --> B
-    B -->|same payload| H2
-    B -->|different payload| H3
-    B -->|miss or expired| C
-    C --> D
-    D -->|yes| H3
-    D -->|no| E
-    E <--> F
-    E --> H1
-```
+![Layered booking-creation flow](docs/diagrams/booking-flow.svg)
 
 ## Booking lifecycle
 
@@ -67,18 +41,7 @@ State machine enforced by the booking service (`confirm` / `cancel`).
 `409`, and cancelling a `completed` booking is a `409`. There is no
 complete endpoint in v1; `completed` is set out of band.
 
-```mermaid
-stateDiagram-v2
-    [*] --> pending : POST /bookings
-    pending --> confirmed : staff/admin confirm
-    pending --> cancelled : owner/staff/admin cancel
-    confirmed --> cancelled : owner/staff/admin cancel
-    confirmed --> completed : elapsed (no endpoint in v1)
-    confirmed --> confirmed : confirm (idempotent)
-    cancelled --> cancelled : cancel (idempotent)
-    cancelled --> [*]
-    completed --> [*]
-```
+![Booking state machine](docs/diagrams/booking-state.svg)
 
 ## Why problem+json
 
@@ -129,29 +92,7 @@ partial index).
 - Rate limits: 100/min global, 10/min on auth endpoints (in-memory via
   `slowapi`; raised under `ENVIRONMENT=testing` so the suite can't flake).
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant API as API
-    participant DB as Postgres
-
-    C ->> API: POST /auth/refresh {refresh_token}
-    API ->> API: verify signature + expiry + type=refresh
-    alt invalid or expired
-        API -->> C: 401 problem+json
-    else valid JWT
-        API ->> DB: lookup token hash
-        alt unknown hash
-            API -->> C: 401 unknown refresh token
-        else revoked (reuse detected)
-            API ->> DB: revoke whole chain (one txn)
-            API -->> C: 401 reuse detected
-        else active
-            API ->> DB: revoke old + store new hash (one txn)
-            API -->> C: 200 new access + refresh pair
-        end
-    end
-```
+![Refresh rotation flow](docs/diagrams/auth-refresh.svg)
 
 ## Migrations and data
 
@@ -164,62 +105,7 @@ sequenceDiagram
 
 ## Domain model
 
-```mermaid
-erDiagram
-    users ||--o{ refresh_tokens : holds
-    users ||--o{ bookings : owns
-    users ||--o{ idempotency_keys : scopes
-    resources ||--o{ bookings : hosts
-
-    users {
-        uuid id PK
-        string email UK
-        string password_hash
-        string role
-        boolean is_active
-        timestamptz created_at
-    }
-
-    refresh_tokens {
-        uuid id PK
-        uuid user_id FK
-        string token_hash UK
-        timestamptz expires_at
-        boolean revoked
-        timestamptz created_at
-    }
-
-    resources {
-        uuid id PK
-        string name
-        string type
-        integer capacity
-        boolean is_active
-        timestamptz created_at
-    }
-
-    bookings {
-        uuid id PK
-        uuid user_id FK
-        uuid resource_id FK
-        timestamptz start_at
-        timestamptz end_at
-        string status
-        string idempotency_key "UK per user"
-        timestamptz created_at
-    }
-
-    idempotency_keys {
-        string key "PK + user_id"
-        uuid user_id "PK + key"
-        string method
-        string path
-        string request_hash
-        integer status_code
-        jsonb response_body
-        timestamptz created_at
-    }
-```
+![Entity-relationship diagram](docs/diagrams/erd.svg)
 
 Enforced in the schema, not just the service: the GiST exclusion
 constraint on confirmed bookings per resource, and the per-user unique key

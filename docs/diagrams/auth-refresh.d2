@@ -1,0 +1,33 @@
+direction: down
+
+request: "POST /auth/refresh {refresh_token}"
+sig: {
+  shape: diamond
+  label: "signature + expiry\n+ type=refresh valid?"
+}
+lookup: "lookup token hash in DB"
+known: {
+  shape: diamond
+  label: "known?"
+}
+revoked: {
+  shape: diamond
+  label: "revoked?"
+}
+reuse: "revoke whole chain (one txn)"
+rotate: "revoke old + store new hash (one txn)"
+e_invalid: "401 invalid token"
+e_unknown: "401 unknown refresh token"
+e_reuse: "401 reuse detected"
+ok: "200 new access + refresh pair"
+
+request -> sig
+sig -> lookup: yes
+sig -> e_invalid: no
+lookup -> known
+known -> revoked: yes
+known -> e_unknown: no
+revoked -> reuse: yes
+revoked -> rotate: no
+reuse -> e_reuse
+rotate -> ok

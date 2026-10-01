@@ -1,0 +1,66 @@
+direction: right
+
+users: {
+  shape: sql_table
+  id: UUID {constraint: primary_key}
+  email: VARCHAR(320) {constraint: unique}
+  password_hash: VARCHAR(255)
+  role: role
+  is_active: BOOLEAN
+  created_at: TIMESTAMPTZ
+}
+
+refresh_tokens: {
+  shape: sql_table
+  id: UUID {constraint: primary_key}
+  user_id: UUID {constraint: foreign_key}
+  token_hash: VARCHAR(64) {constraint: unique}
+  expires_at: TIMESTAMPTZ
+  revoked: BOOLEAN
+  created_at: TIMESTAMPTZ
+}
+
+resources: {
+  shape: sql_table
+  id: UUID {constraint: primary_key}
+  name: VARCHAR(200)
+  type: resource_type
+  capacity: INTEGER
+  is_active: BOOLEAN
+  created_at: TIMESTAMPTZ
+}
+
+bookings: {
+  shape: sql_table
+  id: UUID {constraint: primary_key}
+  user_id: UUID {constraint: foreign_key}
+  resource_id: UUID {constraint: foreign_key}
+  start_at: TIMESTAMPTZ
+  end_at: TIMESTAMPTZ
+  status: booking_status
+  # unique per (user_id): race backstop behind the response store
+  idempotency_key: VARCHAR
+  created_at: TIMESTAMPTZ
+}
+
+idempotency_keys: {
+  shape: sql_table
+  key: VARCHAR(255) {constraint: primary_key}
+  user_id: UUID {constraint: primary_key}
+  method: VARCHAR(10)
+  path: VARCHAR(500)
+  request_hash: VARCHAR(64)
+  status_code: INTEGER
+  response_body: JSONB
+  created_at: TIMESTAMPTZ
+}
+
+users.id -> refresh_tokens.user_id
+users.id -> bookings.user_id
+users.id -> idempotency_keys.user_id
+resources.id -> bookings.resource_id
+
+explanation: |md
+  Schema-level guards: GiST exclusion on confirmed bookings per resource,
+  per-user unique idempotency slot on bookings, hashed-only refresh tokens.
+|

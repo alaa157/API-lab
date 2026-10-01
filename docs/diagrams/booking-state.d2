@@ -1,0 +1,29 @@
+direction: right
+
+start: {
+  shape: circle
+  label: ""
+  style.fill: black
+}
+pending: "pending"
+confirmed: "confirmed"
+cancelled: "cancelled"
+completed: "completed"
+end_cancelled: {
+  shape: circle
+  label: ""
+}
+end_completed: {
+  shape: circle
+  label: ""
+}
+
+start -> pending: POST /bookings
+pending -> confirmed: staff/admin confirm
+pending -> cancelled: owner/staff/admin cancel
+confirmed -> cancelled: owner/staff/admin cancel
+confirmed -> completed: elapsed (no endpoint in v1)
+confirmed -> confirmed: confirm (idempotent)
+cancelled -> cancelled: cancel (idempotent)
+cancelled -> end_cancelled
+completed -> end_completed

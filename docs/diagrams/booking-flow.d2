@@ -1,0 +1,39 @@
+direction: down
+
+router: {
+  label: "Router: status codes, headers"
+  req: "POST /bookings + Idempotency-Key?"
+}
+service: {
+  label: "Service: rules, one transaction"
+  check: {
+    shape: diamond
+    label: "stored response\nfor key + user?"
+  }
+  validate: "validate user + resource active"
+  overlap: {
+    shape: diamond
+    label: "confirmed overlap?"
+  }
+  insert: "insert pending booking\n+ store response"
+}
+store: {
+  label: "Repo + Postgres"
+  db: {
+    shape: cylinder
+    label: "bookings\nidempotency_keys"
+  }
+}
+replay: "201 replay (Idempotent-Replayed)"
+err: "422 / 409 problem+json"
+created: "201 + body"
+
+router.req -> service.check
+service.check -> replay: same payload
+service.check -> err: different payload
+service.check -> service.validate: miss or expired
+service.validate -> service.overlap
+service.overlap -> err: yes
+service.overlap -> service.insert: no
+service.insert -> store.db
+service.insert -> created
