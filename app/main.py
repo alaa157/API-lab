@@ -4,14 +4,32 @@ from slowapi.errors import RateLimitExceeded
 
 from app.api.health import router as health_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.bookings import router as bookings_router
+from app.api.v1.resources import router as resources_router
 from app.core.config import get_settings
+from app.core.database import SessionLocal
 from app.core.errors import problem, register_handlers
 from app.core.rate import limiter
+
+
+async def _sweep_idempotency_keys() -> None:
+    try:
+        from app.services.idempotency import sweep
+
+        async with SessionLocal() as session:
+            await sweep(session)
+    except Exception:
+        # DB may be unreachable at boot; lazy expiry on read covers it.
+        pass
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name)
+
+    @app.on_event("startup")
+    async def _startup() -> None:
+        await _sweep_idempotency_keys()
 
     app.state.limiter = limiter
 
@@ -39,6 +57,8 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(resources_router, prefix="/api/v1")
+    app.include_router(bookings_router, prefix="/api/v1")
 
     @app.get("/", include_in_schema=False)
     async def root() -> dict[str, str]:

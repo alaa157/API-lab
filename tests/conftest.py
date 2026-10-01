@@ -55,10 +55,11 @@ _ensure_urls()
 subprocess.run(["alembic", "upgrade", "head"], check=True, cwd=ROOT)
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import select, text  # noqa: E402
 
 from app.core.database import SessionLocal  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.models.user import Role, User  # noqa: E402
 
 _app = create_app()
 
@@ -111,3 +112,54 @@ async def login(client, email="user@example.com", password="password123"):
 
 def auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+async def promote(db_session, email: str, role: Role):
+    result = await db_session.execute(select(User).where(User.email == email))
+    user = result.scalar_one()
+    user.role = role
+    await db_session.commit()
+    return user
+
+
+async def user_token(client, db_session, email="user@example.com", role=Role.customer):
+    await register(client, email=email)
+    if role != Role.customer:
+        await promote(db_session, email, role)
+    tokens = await login(client, email=email)
+    return tokens["access_token"]
+
+
+async def make_resource(
+    client, token, name="Room A", type="room", capacity=4, **kw
+):
+    r = await client.post(
+        "/api/v1/resources",
+        json={"name": name, "type": type, "capacity": capacity, **kw},
+        headers=auth_header(token),
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def window(hours_from_now=1, duration_hours=1):
+    from datetime import datetime, timedelta, timezone
+
+    start = datetime.now(timezone.utc) + timedelta(hours=hours_from_now)
+    end = start + timedelta(hours=duration_hours)
+    return start.isoformat(), end.isoformat()
+
+
+async def make_booking(
+    client, token, resource_id, start=None, end=None, headers=None, **kw
+):
+    if start is None or end is None:
+        default_start, default_end = window()
+        start = start or default_start
+        end = end or default_end
+    r = await client.post(
+        "/api/v1/bookings",
+        json={"resource_id": resource_id, "start_at": start, "end_at": end, **kw},
+        headers={**(headers or {}), **auth_header(token)},
+    )
+    return r
