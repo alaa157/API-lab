@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,7 +17,7 @@ class Settings(BaseSettings):
         "postgresql+psycopg://booking:booking@localhost:5432/bookingdb"
     )
 
-    jwt_secret_key: str = "dev-secret-change-me"
+    jwt_secret_key: str = Field(min_length=32, repr=False)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7

@@ -1,5 +1,6 @@
 """RFC 7807 problem+json error model and domain exceptions (plan sec 3.2)."""
 
+import logging
 from typing import Any
 
 from fastapi import FastAPI, Request, status
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 PROBLEM_BASE = "https://api.booking.local/problems"
+logger = logging.getLogger(__name__)
 
 
 class ProblemDetail(BaseModel):
@@ -99,7 +101,18 @@ async def _validation_handler(
     )
 
 
+async def _internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error("Unhandled server error")
+    return problem(
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "Internal Server Error",
+        "An unexpected error occurred",
+        "internal-error",
+    )
+
+
 def register_handlers(app: FastAPI) -> None:
     app.add_exception_handler(DomainError, _domain_handler)  # type: ignore[arg-type]
     app.add_exception_handler(StarletteHTTPException, _http_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, _validation_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(Exception, _internal_error_handler)
